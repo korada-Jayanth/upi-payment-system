@@ -1,0 +1,47 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: fraud-detection-service
+
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: fraud_db
+      username: mongo_user
+      password: mongo_pass
+      authentication-database: admin
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: fraud-detection-group
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Fraud rule thresholds ? externalized for easy tuning
+fraud:
+  rules:
+    high-amount-threshold: 50000
+    velocity-window-minutes: 5
+    velocity-max-transactions: 5
