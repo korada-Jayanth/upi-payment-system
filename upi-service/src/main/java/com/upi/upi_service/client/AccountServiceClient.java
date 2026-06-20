@@ -1,5 +1,6 @@
 package com.upi.upi_service.client;
 
+import com.upi.upi_service.config.FeignOkHttpConfig;
 import com.upi.upi_service.dto.AccountDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -36,4 +36,11 @@ public class AuthController {
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("User Service is running");
     }
+
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<UserDto> getUserById(
+            @PathVariable Long userId) {
+
+        return ResponseEntity.ok(authService.getUserById(userId));
+    }
 }

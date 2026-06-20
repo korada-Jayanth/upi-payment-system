@@ -36,29 +36,29 @@ public class PaymentService {
 
     public PaymentResponseDto initiatePayment(PaymentRequestDto request) {
 
-        // 1. Validate sender VPA exists and is ACTIVE
         VirtualPaymentAddress senderVpa = vpaRepository.findByVpa(request.getSenderVpa())
-                .orElseThrow(() -> new VpaNotFoundException("Sender VPA not found: " + request.getSenderVpa()));
+                .orElseThrow(() ->
+                        new VpaNotFoundException("Sender VPA not found: " + request.getSenderVpa()));
+
+        VirtualPaymentAddress receiverVpa = vpaRepository.findByVpa(request.getReceiverVpa())
+                .orElseThrow(() ->
+                        new VpaNotFoundException("Receiver VPA not found: " + request.getReceiverVpa()));
 
         if (senderVpa.getStatus() != VpaStatus.ACTIVE) {
             throw new IllegalStateException("Sender VPA is not active");
         }
 
-        // 2. Validate receiver VPA exists
-        VirtualPaymentAddress receiverVpa = vpaRepository.findByVpa(request.getReceiverVpa())
-                .orElseThrow(() -> new VpaNotFoundException("Receiver VPA not found: " + request.getReceiverVpa()));
-
         if (receiverVpa.getStatus() != VpaStatus.ACTIVE) {
             throw new IllegalStateException("Receiver VPA is not active");
         }
 
-        // 3. Validate PIN
         if (!passwordEncoder.matches(request.getPin(), senderVpa.getHashedPin())) {
             throw new InvalidPinException("Invalid UPI PIN");
         }
 
-        // 4. Check sender balance
-        Map<String, BigDecimal> balanceMap = accountServiceClient.getBalance(senderVpa.getAccountId());
+        Map<String, BigDecimal> balanceMap =
+                accountServiceClient.getBalance(senderVpa.getAccountId());
+
         BigDecimal currentBalance = balanceMap.get("balance");
 
         if (currentBalance.compareTo(request.getAmount()) < 0) {
@@ -66,18 +66,39 @@ public class PaymentService {
                     "Insufficient balance. Available: ₹" + currentBalance);
         }
 
-        // 5. Debit sender
-        accountServiceClient.updateBalance(senderVpa.getAccountId(), request.getAmount().negate());
-        log.info("Debited ₹{} from {}", request.getAmount(), request.getSenderVpa());
-
-        // 6. Credit receiver
-        accountServiceClient.updateBalance(receiverVpa.getAccountId(), request.getAmount());
-        log.info("Credited ₹{} to {}", request.getAmount(), request.getReceiverVpa());
-
-        // 7. Build transaction ID
         String transactionId = "TXN" + System.currentTimeMillis();
 
-        // 8. Publish Kafka event
+        try {
+
+            log.info("Sender Account Id : {}", senderVpa.getAccountId());
+            log.info("Receiver Account Id : {}", receiverVpa.getAccountId());
+
+            // Debit sender
+            accountServiceClient.updateBalance(
+                    senderVpa.getAccountId(),
+                    request.getAmount().negate());
+
+            log.info("Debited ₹{} from {}",
+                    request.getAmount(),
+                    request.getSenderVpa());
+
+            // Credit receiver
+            accountServiceClient.updateBalance(
+                    receiverVpa.getAccountId(),
+                    request.getAmount());
+
+            log.info("Credited ₹{} to {}",
+                    request.getAmount(),
+                    request.getReceiverVpa());
+
+        } catch (Exception ex) {
+
+            log.error("Payment failed", ex);
+
+            throw new RuntimeException(
+                    "Payment processing failed: " + ex.getMessage());
+        }
+
         PaymentEventDto event = PaymentEventDto.builder()
                 .transactionId(transactionId)
                 .senderVpa(request.getSenderVpa())
@@ -89,16 +110,21 @@ public class PaymentService {
                 .initiatedAt(LocalDateTime.now())
                 .build();
 
-        kafkaTemplate.send(paymentInitiatedTopic, transactionId, event);
-        log.info("Published payment.initiated event for TXN: {}", transactionId);
+        kafkaTemplate.send(
+                paymentInitiatedTopic,
+                transactionId,
+                event
+        );
 
-        // 9. Return response
+        log.info("Published payment.initiated event for TXN: {}",
+                transactionId);
+
         return PaymentResponseDto.builder()
                 .transactionId(transactionId)
                 .senderVpa(request.getSenderVpa())
                 .receiverVpa(request.getReceiverVpa())
                 .amount(request.getAmount())
-                .status("INITIATED")
+                .status("SUCCESS")
                 .remarks(request.getRemarks())
                 .timestamp(LocalDateTime.now())
                 .build();

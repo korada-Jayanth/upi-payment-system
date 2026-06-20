@@ -2,6 +2,8 @@ package com.upi.user_service.service;
 
 import com.upi.user_service.dto.*;
 import com.upi.user_service.entity.User;
+import com.upi.user_service.exception.InvalidCredentialsException;
+import com.upi.user_service.exception.UserAlreadyExistsException;
 import com.upi.user_service.repository.UserRepository;
 import com.upi.user_service.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +28,7 @@ public class AuthService {
 
         // 1. Validate no duplicates
         if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new RuntimeException("Phone number already registered");
+            throw new UserAlreadyExistsException("Phone number already registered");
         }
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already registered");
@@ -77,7 +79,7 @@ public class AuthService {
 
         // 3. Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new InvalidCredentialsException("Invalid credentials");
         }
 
         // 4. Generate JWT and cache it
@@ -103,6 +105,19 @@ public class AuthService {
     public void logout(String phoneNumber) {
         redisTemplate.delete("token:" + phoneNumber);
         log.info("User logged out: {}", phoneNumber);
+    }
+
+    public UserDto getUserById(Long userId) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        return new UserDto(
+                user.getId(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getPhoneNumber()
+        );
     }
 }
 
